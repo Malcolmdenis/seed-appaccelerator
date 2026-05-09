@@ -5,7 +5,7 @@ import {
     SandboxDeploymentCallbacks,
     CloudflareDeploymentCallbacks
 } from '../interfaces/IDeploymentManager';
-import { BootstrapResponse, StaticAnalysisResponse, RuntimeError, PreviewType } from '../../../services/sandbox/sandboxTypes';
+import { BootstrapResponse, StaticAnalysisResponse, RuntimeError, PreviewType, type DeploymentResult as SandboxDeploymentResult } from '../../../services/sandbox/sandboxTypes';
 import { FileOutputType } from '../../schemas';
 import { generateId } from '../../../utils/idGenerator';
 import { generateAppProxyToken, generateAppProxyUrl } from '../../../services/aigateway-proxy/controller';
@@ -681,7 +681,7 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
             state.sandboxInstanceId,
             target,
         );
-        const timeoutPromise = new Promise<DeploymentResult>((resolve) =>
+        const timeoutPromise = new Promise<SandboxDeploymentResult>((resolve) =>
             setTimeout(
                 () =>
                     resolve({
@@ -693,7 +693,7 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
             ),
         );
 
-        let deploymentResult: DeploymentResult;
+        let deploymentResult: SandboxDeploymentResult;
         try {
             deploymentResult = await Promise.race([deployPromise, timeoutPromise]);
         } catch (err) {
