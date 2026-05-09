@@ -252,9 +252,9 @@ export class GitHubService {
     }
 
     /**
-     * Replace [cloudflarebutton] placeholder with deploy button
+     * Strip deploy-button placeholders from README on export.
      */
-    private static async modifyReadmeForGitHub(fs: MemFS, githubRepoUrl: string): Promise<void> {
+    private static async modifyReadmeForGitHub(fs: MemFS, _githubRepoUrl: string): Promise<void> {
         try {
             // Check if README exists
             try {
