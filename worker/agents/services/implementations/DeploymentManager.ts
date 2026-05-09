@@ -672,33 +672,68 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
             fileCount: Object.keys(state.generatedFilesMap).length
         });
 
-        // Deploy to Cloudflare
-        const deploymentResult = await client.deployToCloudflareWorkers(
+        // Hard deadline so a silent hang in the sandbox always surfaces as an error
+        // instead of leaving the user staring at a deploy banner forever.
+        const DEPLOY_DEADLINE_MS = 5 * 60 * 1000;
+        const startedAt = Date.now();
+
+        const deployPromise = client.deployToCloudflareWorkers(
             state.sandboxInstanceId,
-            target
+            target,
+        );
+        const timeoutPromise = new Promise<DeploymentResult>((resolve) =>
+            setTimeout(
+                () =>
+                    resolve({
+                        success: false,
+                        message: `Deployment timed out after ${DEPLOY_DEADLINE_MS / 1000}s`,
+                        error: 'DEPLOY_TIMEOUT',
+                    }),
+                DEPLOY_DEADLINE_MS,
+            ),
         );
 
-        logger.info('Deployment result:', deploymentResult);
+        let deploymentResult: DeploymentResult;
+        try {
+            deploymentResult = await Promise.race([deployPromise, timeoutPromise]);
+        } catch (err) {
+            logger.error('Deploy promise threw unexpectedly', err);
+            deploymentResult = {
+                success: false,
+                message: `Deployment crashed: ${err instanceof Error ? err.message : String(err)}`,
+                error: err instanceof Error ? err.message : String(err),
+            };
+        }
+
+        const elapsedMs = Date.now() - startedAt;
+        logger.info('Deployment finished', { elapsedMs, success: deploymentResult?.success });
 
         if (!deploymentResult || !deploymentResult.success) {
             logger.error('Deployment failed', {
                 message: deploymentResult?.message,
-                error: deploymentResult?.error
+                error: deploymentResult?.error,
+                elapsedMs,
             });
 
-            // Check for preview expired error
-            if (deploymentResult?.error?.includes('Failed to read instance metadata') || 
-                deploymentResult?.error?.includes(`/bin/sh: 1: cd: can't cd to i-`)) {
-                logger.error('Deployment sandbox died - preview expired');
+            const sandboxDied =
+                deploymentResult?.error?.includes('Failed to read instance metadata') ||
+                deploymentResult?.error?.includes(`/bin/sh: 1: cd: can't cd to i-`);
+
+            if (sandboxDied) {
+                logger.error('Deployment sandbox died - preview expired, respawning');
                 this.deployToSandbox();
-            } else {
-                callbacks?.onError?.({
-                    message: `Deployment failed: ${deploymentResult?.message || 'Unknown error'}`,
-                    instanceId: state.sandboxInstanceId ?? '',
-                    error: deploymentResult?.error || 'Unknown deployment error'
-                });
             }
-            
+
+            // Always notify the user, even when the sandbox died — otherwise the
+            // deploy banner hangs forever with no feedback.
+            callbacks?.onError?.({
+                message: sandboxDied
+                    ? 'Sandbox preview expired during deploy. We respawned it — please try Deploy again.'
+                    : `Deployment failed: ${deploymentResult?.message || 'Unknown error'}`,
+                instanceId: state.sandboxInstanceId ?? '',
+                error: deploymentResult?.error || 'Unknown deployment error',
+            });
+
             return { deploymentUrl: null };
         }
 

@@ -1735,32 +1735,44 @@ export class SandboxSdkClient extends BaseSandboxService {
     // DEPLOYMENT
     // ==========================================
     async deployToCloudflareWorkers(instanceId: string, target: DeploymentTarget = 'platform'): Promise<DeploymentResult> {
+        const t0 = Date.now();
+        const elapsed = () => `${Date.now() - t0}ms`;
         try {
-            this.logger.info('Starting deployment', { instanceId });
-            
+            this.logger.info('[deploy] Starting deployment', { instanceId, target, t: elapsed() });
+
             // Get project metadata
             const metadata = await this.getInstanceMetadata(instanceId);
             const projectName = metadata?.projectName || instanceId;
-            
+            this.logger.info('[deploy] Got instance metadata', { projectName, t: elapsed() });
+
             // Get credentials from environment (secure - no exposure to external processes)
             const accountId = env.CLOUDFLARE_ACCOUNT_ID;
             const apiToken = env.CLOUDFLARE_API_TOKEN;
-            
+
             if (!accountId || !apiToken) {
                 throw new Error('CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN must be set in environment');
             }
-            
-            this.logger.info('Processing deployment', { instanceId });
-            
+
             // Step 1: Run build commands (bun run build && bunx wrangler build)
-            this.logger.info('Building project');
+            this.logger.info('[deploy] Step 1/3 — running bun run build', { t: elapsed() });
             const buildResult = await this.executeCommand(instanceId, 'bun run build');
+            this.logger.info('[deploy] bun run build finished', {
+                exitCode: buildResult.exitCode,
+                stdoutTail: (buildResult.stdout || '').slice(-300),
+                stderrTail: (buildResult.stderr || '').slice(-300),
+                t: elapsed(),
+            });
             if (buildResult.exitCode !== 0) {
                 this.logger.warn('Build step failed or not available', buildResult.stdout, buildResult.stderr);
                 throw new Error(`Build failed: ${buildResult.stderr}`);
             }
-            
+
+            this.logger.info('[deploy] Running bunx wrangler build', { t: elapsed() });
             const wranglerBuildResult = await this.executeCommand(instanceId, 'bunx wrangler build');
+            this.logger.info('[deploy] bunx wrangler build finished', {
+                exitCode: wranglerBuildResult.exitCode,
+                t: elapsed(),
+            });
             if (wranglerBuildResult.exitCode !== 0) {
                 this.logger.warn('Wrangler build failed', wranglerBuildResult.stdout, wranglerBuildResult.stderr);
                 // Continue anyway - some projects might not need wrangler build
@@ -1904,8 +1916,14 @@ export class SandboxSdkClient extends BaseSandboxService {
             
             // Step 7: Deploy using pure function
             const useDispatch = target === 'platform';
-            this.logger.info('Deploying to Cloudflare', { target });
-            
+            this.logger.info('[deploy] Step 3/3 — pushing to Cloudflare API', {
+                target,
+                useDispatch,
+                workerKB: (workerContent.length / 1024).toFixed(2),
+                hasAssets: Boolean(assetsManifest),
+                t: elapsed(),
+            });
+
             if (useDispatch) {
                 if (!('DISPATCH_NAMESPACE' in env)) {
                     throw new Error('DISPATCH_NAMESPACE not found in environment variables, cannot deploy without dispatch namespace');
@@ -1935,12 +1953,13 @@ export class SandboxSdkClient extends BaseSandboxService {
             // Step 8: Determine deployment URL
             const deployedUrl = `${this.getProtocolForHost()}://${projectName}.${getPreviewDomain(env)}`;
             const deploymentId = projectName;
-            
-            this.logger.info('Deployment successful', { 
+
+            this.logger.info('[deploy] DONE', {
                 instanceId,
-                deployedUrl, 
+                deployedUrl,
                 deploymentId,
-                mode: useDispatch ? 'dispatch-namespace' : 'user-worker'
+                mode: useDispatch ? 'dispatch-namespace' : 'user-worker',
+                totalMs: Date.now() - t0,
             });
             
             return {
