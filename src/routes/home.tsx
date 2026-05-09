@@ -66,9 +66,11 @@ export default function Home() {
 
 
 	const placeholderPhrases = useMemo(() => [
-		"todo list app",
-		"F1 fantasy game",
-		"personal finance tracker"
+		"booking page for my coaching practice",
+		"online store for handmade jewelry",
+		"dashboard to track my client work",
+		"signup page for my next workshop",
+		"simple CRM for my small business"
 	], []);
 	const [currentPlaceholderPhraseIndex, setCurrentPlaceholderPhraseIndex] = useState(0);
 	const [currentPlaceholderText, setCurrentPlaceholderText] = useState("");
@@ -168,33 +170,16 @@ export default function Home() {
 
 	return (
 		<div className="relative flex flex-col items-center size-full">
-			{/* Dotted background pattern - extends to full viewport */}
-			<div className="fixed inset-0 text-accent z-0 opacity-20 pointer-events-none">
-				<svg width="100%" height="100%">
-					<defs>
-						<pattern
-							id=":S2:"
-							viewBox="-6 -6 12 12"
-							patternUnits="userSpaceOnUse"
-							width="12"
-							height="12"
-						>
-							<circle
-								cx="0"
-								cy="0"
-								r="1"
-								fill="currentColor"
-							></circle>
-						</pattern>
-					</defs>
-					<rect
-						width="100%"
-						height="100%"
-						fill="url(#:S2:)"
-					></rect>
-				</svg>
+			{/* Soft ambient glow — replaces the previous dot pattern */}
+			<div
+				aria-hidden="true"
+				className="fixed inset-0 z-0 pointer-events-none overflow-hidden"
+			>
+				<div className="absolute -top-32 -left-32 w-[40rem] h-[40rem] rounded-full bg-[radial-gradient(circle,rgba(111,165,156,0.18)_0%,rgba(111,165,156,0)_60%)]" />
+				<div className="absolute -bottom-40 -right-32 w-[36rem] h-[36rem] rounded-full bg-[radial-gradient(circle,rgba(232,213,160,0.20)_0%,rgba(232,213,160,0)_60%)]" />
+				<div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-[30rem] h-[30rem] rounded-full bg-[radial-gradient(circle,rgba(3,79,70,0.06)_0%,rgba(3,79,70,0)_60%)]" />
 			</div>
-			
+
 			<LayoutGroup>
 				<div className="rounded-md w-full max-w-2xl overflow-hidden">
 					<motion.div
@@ -204,9 +189,33 @@ export default function Home() {
 							"px-6 p-8 flex flex-col items-center z-10",
 							discoverReady ? "mt-48" : "mt-[20vh] sm:mt-[24vh] md:mt-[28vh]"
 						)}>
-						<h1 className="text-shadow-sm text-shadow-red-200 dark:text-shadow-red-900 text-accent font-medium leading-[1.1] tracking-tight text-5xl w-full mb-4 bg-clip-text bg-gradient-to-r from-text-primary to-text-primary/90">
-							What should we build today?
-						</h1>
+						<motion.div
+							initial={{ opacity: 0, y: 8 }}
+							animate={{ opacity: 1, y: 0 }}
+							transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+							className="flex items-center gap-2 mb-4 px-3 py-1 rounded-full bg-brand-subtle/15 border border-brand-subtle/30"
+						>
+							<span className="size-1.5 rounded-full bg-brand-primary animate-pulse" />
+							<span className="text-xs font-medium tracking-wide text-brand-primary uppercase">Appy is ready</span>
+						</motion.div>
+
+						<motion.h1
+							initial={{ opacity: 0, y: 12 }}
+							animate={{ opacity: 1, y: 0 }}
+							transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1], delay: 0.05 }}
+							className="text-shadow-sm text-shadow-[#a8d5c4] text-brand-primary font-semibold leading-[1.05] tracking-tight text-5xl md:text-6xl w-full mb-3 text-center"
+							style={{ fontFamily: "'Fraunces', 'Inter', serif" }}
+						>
+							Tell Appy what to build
+						</motion.h1>
+						<motion.p
+							initial={{ opacity: 0 }}
+							animate={{ opacity: 1 }}
+							transition={{ duration: 0.7, delay: 0.2 }}
+							className="text-text-tertiary text-base md:text-lg mb-8 text-center max-w-md"
+						>
+							Describe the app you have in mind. Appy will design, build, and ship it for you — no coding needed.
+						</motion.p>
 
 						<form
 							method="POST"

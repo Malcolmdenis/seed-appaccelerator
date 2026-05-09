@@ -9,6 +9,10 @@ import {
 	Check,
 	Eye,
 	EyeOff,
+	UserCircle,
+	Sparkles,
+	Code2,
+	AlertTriangle,
 } from 'lucide-react';
 import { ModelConfigTabs } from '@/components/model-config-tabs';
 import type {
@@ -423,20 +427,53 @@ export default function SettingsPage() {
 		}
 	}, [user]);
 
-	return (
-		<div className="min-h-screen bg-bg-3 relative">
-			<main className="container mx-auto px-4 py-8 max-w-4xl">
-				<div className="space-y-8">
-					{/* Page Header */}
-					<div>
-						<h1 className="text-4xl font-bold font-[departureMono] text-red-500">
-							SETTINGS
-						</h1>
-						<p className="text-text-tertiary mt-2">
-							Manage your account settings and preferences
-						</p>
-					</div>
+	const sections: Array<{ id: string; label: string; icon: React.ReactNode }> = [
+		{ id: 'account', label: 'Your Account', icon: <UserCircle className="h-4 w-4" /> },
+		{ id: 'security', label: 'Security & Sessions', icon: <Lock className="h-4 w-4" /> },
+		{ id: 'model-configs', label: "Appy's Brain", icon: <Sparkles className="h-4 w-4" /> },
+		{ id: 'api-keys', label: 'Developer Access', icon: <Code2 className="h-4 w-4" /> },
+		{ id: 'danger', label: 'Danger Zone', icon: <AlertTriangle className="h-4 w-4" /> },
+	];
 
+	return (
+		<div className="min-h-screen bg-bg-3 relative" style={{ fontFamily: "'Inter One Mono', 'Inter', ui-monospace, monospace" }}>
+			<main className="container mx-auto px-4 py-10 max-w-6xl">
+				{/* Page header */}
+				<header className="mb-10">
+					<h1
+						className="text-5xl md:text-6xl font-semibold tracking-tight text-brand-primary leading-none"
+						style={{ fontFamily: "'Intel One Mono', ui-monospace, monospace" }}
+					>
+						settings
+					</h1>
+					<p className="text-text-tertiary mt-3 text-base max-w-2xl" style={{ fontFamily: "'Inter', sans-serif" }}>
+						Tune how Appy works, manage your sign-ins, and control developer access. Some sections are technical — you can safely skip the ones you don't need today.
+					</p>
+				</header>
+
+				<div className="grid grid-cols-1 lg:grid-cols-[220px_1fr] gap-10">
+					{/* Side nav */}
+					<aside className="hidden lg:block">
+						<nav className="sticky top-8 flex flex-col gap-1" style={{ fontFamily: "'Intel One Mono', ui-monospace, monospace" }}>
+							{sections.map((s) => (
+								<a
+									key={s.id}
+									href={`#${s.id}`}
+									onClick={(e) => {
+										e.preventDefault();
+										const el = document.getElementById(s.id);
+										if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+									}}
+									className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-text-secondary hover:text-brand-primary hover:bg-brand-subtle/15 transition-colors"
+								>
+									{s.icon}
+									<span>{s.label}</span>
+								</a>
+							))}
+						</nav>
+					</aside>
+
+					<div className="space-y-8">
 					{/* Integrations Section */}
 					{/* <Card id="integrations">
 						<CardHeader variant="minimal">
@@ -524,30 +561,64 @@ export default function SettingsPage() {
 						</CardContent>
 					</Card> */}
 
-					{/* Model Configuration Section */}
+					{/* Account section — basic profile info */}
+					<Card id="account">
+						<CardHeader variant="minimal">
+							<div className="flex items-center gap-3 border-b w-full py-3 text-text-primary">
+								<UserCircle className="h-5 w-5 text-brand-primary" />
+								<CardTitle style={{ fontFamily: "'Intel One Mono', ui-monospace, monospace" }}>
+									Your account
+								</CardTitle>
+							</div>
+						</CardHeader>
+						<CardContent className="space-y-4 mt-4 px-6">
+							<p className="text-sm text-text-tertiary">
+								The basics of your sign-in. To change these, manage them in your connected provider's account.
+							</p>
+							<div className="flex items-center gap-4 pt-2">
+								{user?.avatarUrl ? (
+									<img src={user.avatarUrl} alt="" className="h-14 w-14 rounded-full object-cover" />
+								) : (
+									<div className="h-14 w-14 rounded-full bg-brand-subtle/20 flex items-center justify-center">
+										<UserCircle className="h-7 w-7 text-brand-primary" />
+									</div>
+								)}
+								<div className="flex-1">
+									<p className="font-medium text-text-primary">{user?.displayName || user?.email || 'Anonymous'}</p>
+									<p className="text-sm text-text-tertiary">{user?.email}</p>
+								</div>
+								{user?.provider && (
+									<Badge variant="secondary" className="capitalize">
+										via {user.provider}
+									</Badge>
+								)}
+							</div>
+						</CardContent>
+					</Card>
+
+					{/* Appy's Brain — Model Configuration Section */}
 					<Card id="model-configs">
 						<CardHeader variant="minimal">
 							<div className="flex items-center gap-3 border-b w-full py-3 text-text-primary">
-								{' '}
-								<Settings className="h-5 w-5" />
-								<div>
-									<CardTitle>
-										AI Model Configurations
-									</CardTitle>
-								</div>
+								<Sparkles className="h-5 w-5 text-brand-primary" />
+								<CardTitle style={{ fontFamily: "'Intel One Mono', ui-monospace, monospace" }}>
+									Appy's brain
+								</CardTitle>
 							</div>
 						</CardHeader>
 						<CardContent className="space-y-6 px-6">
+							<div className="rounded-lg bg-brand-subtle/10 border border-brand-subtle/30 p-4">
+								<p className="text-sm text-text-secondary leading-relaxed">
+									This section lets advanced users pick which AI models Appy uses behind the scenes (e.g., for planning vs. writing code). <span className="text-text-tertiary">Most people can leave this alone — the defaults are tuned to work well.</span>
+								</p>
+							</div>
 							{/* Provider API Keys Integration */}
 							<div className="space-y-2 mt-6">
-								<h4 className="font-medium">
-									Provider API Keys
+								<h4 className="font-medium" style={{ fontFamily: "'Intel One Mono', ui-monospace, monospace" }}>
+									Provider keys
 								</h4>
 								<p className="text-sm text-text-tertiary">
-									AI provider API keys are managed in the "API
-									Keys & Secrets" section below. Configure
-									your OpenAI, Anthropic, Google AI, and
-									OpenRouter keys there.
+									To use your own OpenAI, Anthropic, or Google AI account for billing, add those keys in the Developer Access section below.
 								</p>
 
 								<Button
@@ -594,18 +665,23 @@ export default function SettingsPage() {
 					<Card id="api-keys">
 						<CardHeader variant="minimal">
 							<div className="flex items-center gap-3 border-b w-full py-3 text-text-primary">
-								<Key className="h-5 w-5" />
-								<div>
-									<CardTitle>API Keys</CardTitle>
-								</div>
+								<Code2 className="h-5 w-5 text-brand-primary" />
+								<CardTitle style={{ fontFamily: "'Intel One Mono', ui-monospace, monospace" }}>
+									Developer access
+								</CardTitle>
 							</div>
 						</CardHeader>
 						<CardContent className="space-y-4 mt-4 px-6">
+							<div className="rounded-lg bg-brand-subtle/10 border border-brand-subtle/30 p-4">
+								<p className="text-sm text-text-secondary leading-relaxed">
+									API keys let other apps or scripts use your account programmatically. <span className="text-text-tertiary">If you don't write code or work with the SDK, you can skip this section.</span>
+								</p>
+							</div>
 							<div className="flex items-start justify-between gap-4">
 								<div className="space-y-1">
-									<h4 className="font-medium text-sm">API Keys</h4>
+									<h4 className="font-medium text-sm" style={{ fontFamily: "'Intel One Mono', ui-monospace, monospace" }}>API keys</h4>
 									<p className="text-sm text-text-secondary">
-										Use these keys to authenticate external SDK clients. The full key is shown only once when created.
+										Use these to authenticate SDK clients. The full key is shown only once when created.
 									</p>
 								</div>
 
@@ -830,19 +906,20 @@ export default function SettingsPage() {
 					<Card id="security">
 						<CardHeader variant="minimal">
 							<div className="flex items-center gap-3 border-b w-full py-3 text-text-primary">
-								<Lock className="h-5 w-5" />
-								<div>
-									<CardTitle className="text-lg">
-										Security
-									</CardTitle>
-								</div>
+								<Lock className="h-5 w-5 text-brand-primary" />
+								<CardTitle className="text-lg" style={{ fontFamily: "'Intel One Mono', ui-monospace, monospace" }}>
+									Security & sessions
+								</CardTitle>
 							</div>
 						</CardHeader>
-						<CardContent className="space-y-3 mt-2 px-6">
+						<CardContent className="space-y-4 mt-2 px-6">
+							<p className="text-sm text-text-tertiary">
+								See where you're signed in and disconnect any device or account you no longer use.
+							</p>
 							{/* Connected Accounts */}
 							<div className="space-y-2">
-								<h4 className="font-medium">
-									Connected Accounts
+								<h4 className="font-medium" style={{ fontFamily: "'Intel One Mono', ui-monospace, monospace" }}>
+									Connected accounts
 								</h4>
 								<div className="flex items-center justify-between">
 									<div className="flex items-center gap-3">
@@ -868,7 +945,7 @@ export default function SettingsPage() {
 
 							{/* Active Sessions */}
 							<div className="space-y-2">
-								<h4 className="font-medium">Active Sessions</h4>
+								<h4 className="font-medium" style={{ fontFamily: "'Intel One Mono', ui-monospace, monospace" }}>Active sessions</h4>
 								{activeSessions.loading ? (
 									<div className="flex items-center gap-3">
 										<Settings className="h-5 w-5 animate-spin text-text-tertiary" />
@@ -923,18 +1000,26 @@ export default function SettingsPage() {
 						</CardContent>
 					</Card>
 
-					<div className="space-y-4 p-3">
-						<h4 className="font-medium text-destructive">
-							Danger Zone
-						</h4>
-
-						<div className="flex items-center justify-between">
-							<div>
-								<p className="font-medium text-text-primary">Delete Account</p>
-								<p className="text-sm text-text-tertiary">
-									Permanently delete your account and all data
-								</p>
+					<Card id="danger" className="border-destructive/30">
+						<CardHeader variant="minimal">
+							<div className="flex items-center gap-3 border-b border-destructive/20 w-full py-3 text-destructive">
+								<AlertTriangle className="h-5 w-5" />
+								<CardTitle className="text-lg" style={{ fontFamily: "'Intel One Mono', ui-monospace, monospace" }}>
+									Danger Zone
+								</CardTitle>
 							</div>
+						</CardHeader>
+						<CardContent className="space-y-3 mt-2 px-6">
+							<p className="text-sm text-text-tertiary">
+								Actions in this section are permanent. Take a breath before clicking anything here.
+							</p>
+							<div className="flex items-center justify-between gap-4 pt-2">
+								<div>
+									<p className="font-medium text-text-primary">Delete account</p>
+									<p className="text-sm text-text-tertiary">
+										Permanently remove your account and everything you've built.
+									</p>
+								</div>
 							<AlertDialog>
 								<AlertDialogTrigger asChild>
 									<Button
@@ -971,9 +1056,11 @@ export default function SettingsPage() {
 								</AlertDialogContent>
 							</AlertDialog>
 						</div>
-					</div>
+					</CardContent>
+				</Card>
 				</div>
-			</main>
-		</div>
+			</div>
+		</main>
+	</div>
 	);
 }

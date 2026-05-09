@@ -61,12 +61,15 @@ export default function DiscoverPage() {
 					transition={{ duration: 0.5 }}
 				>
 					{/* Header */}
-					<div className="mb-8">
-						<h1 className="text-6xl font-bold mb-3 font-[departureMono] text-accent">
-							DISCOVER
+					<div className="mb-10">
+						<h1
+							className="text-7xl font-semibold mb-2 text-brand-primary tracking-tight leading-none"
+							style={{ fontFamily: "'Fraunces', 'Inter', serif", fontVariationSettings: "'opsz' 144" }}
+						>
+							Discover
 						</h1>
-						<p className="text-text-tertiary text-lg">
-							Explore apps built by the community
+						<p className="text-text-tertiary text-lg italic" style={{ fontFamily: "'Fraunces', serif" }}>
+							See what others have built. Get inspired for your own.
 						</p>
 					</div>
 
