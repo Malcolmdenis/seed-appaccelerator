@@ -169,7 +169,10 @@ export default function Home() {
 	const discoverLinkRef = useRef<HTMLDivElement>(null);
 
 	return (
-		<div className="relative flex flex-col items-center size-full">
+		<div className={clsx(
+			"relative flex flex-col items-center size-full min-h-[calc(100vh-4rem)]",
+			!discoverReady && "justify-center"
+		)}>
 			{/* Soft ambient glow — replaces the previous dot pattern */}
 			<div
 				aria-hidden="true"
@@ -187,7 +190,7 @@ export default function Home() {
 						transition={{ layout: { duration: 0.5, ease: [0.22, 1, 0.36, 1] } }}
 						className={clsx(
 							"px-6 p-8 flex flex-col items-center z-10",
-							discoverReady ? "mt-48" : "mt-[20vh] sm:mt-[24vh] md:mt-[28vh]"
+							discoverReady && "mt-16"
 						)}>
 						<motion.div
 							initial={{ opacity: 0, y: 8 }}
