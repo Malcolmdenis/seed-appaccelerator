@@ -1783,15 +1783,44 @@ export class SandboxSdkClient extends BaseSandboxService {
             this.logger.info('Worker compatibility', { compatibilityDate: config.compatibility_date });
             
             // Step 3: Read worker script from dist
+            //
+            // Vite + @cloudflare/vite-plugin emits the worker bundle at
+            //   dist/<environmentName>/index.js
+            // where environmentName is the worker name with hyphens/dots normalised to underscores.
+            // Older / hand-rolled builds may still emit at dist/index.js or dist/_worker.js.
+            // We try each candidate in order and use the first one that exists.
             this.logger.info('Reading worker script');
             const session = await this.getInstanceSession(instanceId);
-            const workerFile = await session.readFile(`/workspace/${instanceId}/dist/index.js`);
-            if (!workerFile.success) {
-                throw new Error(`Worker script not found at /${instanceId}/dist/index.js. Please build the project first.`);
+            const normalisedName = (config.name ?? '').replace(/[-.]/g, '_');
+            const candidatePaths = [
+                normalisedName ? `/workspace/${instanceId}/dist/${normalisedName}/index.js` : null,
+                `/workspace/${instanceId}/dist/index.js`,
+                `/workspace/${instanceId}/dist/_worker.js`,
+                `/workspace/${instanceId}/dist/worker.js`,
+            ].filter((p): p is string => Boolean(p));
+
+            let workerFile: { success: boolean; content: string } | null = null;
+            let usedPath: string | null = null;
+            for (const candidate of candidatePaths) {
+                const attempt = await session.readFile(candidate);
+                if (attempt.success) {
+                    workerFile = attempt;
+                    usedPath = candidate;
+                    break;
+                }
             }
-            
+
+            if (!workerFile || !workerFile.success) {
+                throw new Error(
+                    `Worker script not found. Tried: ${candidatePaths.join(', ')}. Make sure the build step produced a worker bundle.`,
+                );
+            }
+
             const workerContent = workerFile.content;
-            this.logger.info('Worker script loaded', { sizeKB: (workerContent.length / 1024).toFixed(2) });
+            this.logger.info('Worker script loaded', {
+                sizeKB: (workerContent.length / 1024).toFixed(2),
+                path: usedPath,
+            });
             
             // Step 3a: Check for additional worker modules (ESM imports)
             // Process them the same way as assets but as strings for the Map

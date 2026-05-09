@@ -1,9 +1,8 @@
-import { AIAvatar } from '../../../components/icons/logos';
 import clsx from 'clsx';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeExternalLinks from 'rehype-external-links';
-import { LoaderCircle, Check, AlertTriangle, ChevronDown, ChevronRight, MessageSquare } from 'lucide-react';
+import { LoaderCircle, Check, AlertTriangle, ChevronDown, ChevronRight, MessageSquare, Bot } from 'lucide-react';
 import type { ToolEvent } from '../utils/message-helpers';
 import type { ConversationMessage } from '@/api-types';
 import { useState, useEffect, useRef } from 'react';
@@ -346,10 +345,12 @@ export function AIMessage({
 	return (
 		<div className="flex gap-3">
 			<div className="align-text-top pl-1">
-				<AIAvatar className="size-6 text-brand-primary" />
+				<div className="size-7 rounded-full bg-brand-primary/10 border border-brand-primary/30 flex items-center justify-center">
+					<Bot className="size-4 text-brand-primary" />
+				</div>
 			</div>
 			<div className="flex flex-col gap-2 min-w-0">
-				<div className="font-mono font-medium text-text-50">Appy</div>
+				<div className="font-medium text-text-50">Appy</div>
 				
 				{/* Message content with inline tool events (from streaming) */}
 				{orderedContent.length > 0 && (
