@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { Loader, Check, AlertCircle, ChevronDown, ChevronRight, ArrowUp, Zap, XCircle } from 'lucide-react';
+import { Loader, Check, AlertCircle, ChevronDown, ChevronRight, ArrowUp, Zap, XCircle, ExternalLink } from 'lucide-react';
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import type { RefObject } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -187,6 +187,8 @@ interface PhaseTimelineProps {
 	chatId?: string;
 	isDeploying?: boolean;
 	handleProductionDeploy?: (instanceId: string) => void;
+	deploymentUrl?: string;
+	isRedeployReady?: boolean;
 	// Issue tracking and debugging
 	runtimeErrorCount?: number;
 	staticIssueCount?: number;
@@ -276,6 +278,8 @@ export function PhaseTimeline({
 	chatId,
 	isDeploying,
 	handleProductionDeploy,
+	deploymentUrl,
+	isRedeployReady,
 	runtimeErrorCount = 0,
 	staticIssueCount = 0,
 	isDebugging = false,
@@ -423,6 +427,12 @@ export function PhaseTimeline({
 		return generatingPhase || validatingPhase || lastCompletedPhase || phaseTimeline[phaseTimeline.length - 1];
 	}, [phaseTimeline]);
 
+	const isDeployed = !!deploymentUrl && !isDeploying;
+	const showRedeploy = isDeployed && !!isRedeployReady;
+	const showDeployedLink = isDeployed && !isRedeployReady;
+	const deployButtonLabel = isDeploying ? 'Deploying...' : showRedeploy ? 'Redeploy' : 'Deploy';
+	const deployButtonTitle = showDeployedLink ? 'Already deployed — view live' : deployButtonLabel;
+
 	return (
 		<>
 			{/* Collapsed Bar with elegant compression animation and surrounding frosted area */}
@@ -530,23 +540,38 @@ export function PhaseTimeline({
                                     </div>
                                 )}
                                 {chatId && handleProductionDeploy && (
-                                    <button
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleProductionDeploy(chatId);
-                                        }}
-                                        disabled={!!isDeploying}
-                                        className="ml-2 flex items-center gap-1.5 px-2.5 py-1 bg-accent hover:bg-accent/90 disabled:bg-accent/50 text-white rounded-full text-xs font-medium transition-colors disabled:cursor-not-allowed"
-                                        title={isDeploying ? 'Deploying...' : 'Deploy'}
-                                        aria-label={isDeploying ? 'Deploying' : 'Deploy'}
-                                    >
-                                        {isDeploying ? (
-                                            <StatusLoader size="sm" color="accent" />
-                                        ) : (
-                                            <Zap className="w-3 h-3" />
-                                        )}
-                                        <span className="hidden sm:inline">{isDeploying ? 'Deploying...' : 'Deploy'}</span>
-                                    </button>
+                                    showDeployedLink ? (
+                                        <a
+                                            href={deploymentUrl}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            onClick={(e) => e.stopPropagation()}
+                                            className="ml-2 flex items-center gap-1.5 px-2.5 py-1 bg-emerald-600/15 hover:bg-emerald-600/25 text-emerald-700 dark:text-emerald-300 border border-emerald-600/30 rounded-full text-xs font-medium transition-colors"
+                                            title={`Open ${deploymentUrl}`}
+                                        >
+                                            <Check className="w-3 h-3" />
+                                            <span className="hidden sm:inline">Live</span>
+                                            <ExternalLink className="w-3 h-3" />
+                                        </a>
+                                    ) : (
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleProductionDeploy(chatId);
+                                            }}
+                                            disabled={!!isDeploying}
+                                            className="ml-2 flex items-center gap-1.5 px-2.5 py-1 bg-accent hover:bg-accent/90 disabled:bg-accent/50 text-white rounded-full text-xs font-medium transition-colors disabled:cursor-not-allowed"
+                                            title={deployButtonTitle}
+                                            aria-label={deployButtonLabel}
+                                        >
+                                            {isDeploying ? (
+                                                <StatusLoader size="sm" color="accent" />
+                                            ) : (
+                                                <Zap className="w-3 h-3" />
+                                            )}
+                                            <span className="hidden sm:inline">{deployButtonLabel}</span>
+                                        </button>
+                                    )
                                 )}
                             </motion.div>
 
@@ -620,21 +645,36 @@ export function PhaseTimeline({
 												</button>
 
 												{chatId && handleProductionDeploy && (
-													<button
-														onClick={(e) => {
-															e.stopPropagation();
-															handleProductionDeploy(chatId);
-														}}
-														disabled={isDeploying}
-														className="flex items-center gap-1.5 px-3 py-1.5 bg-accent hover:bg-accent/90 disabled:bg-accent/50 text-white rounded-lg text-xs font-medium transition-colors disabled:cursor-not-allowed"
-													>
-														{isDeploying ? (
-															<StatusLoader size="sm" color="accent" />
-														) : (
-															<Zap className="w-3 h-3" />
-														)}
-														{isDeploying ? 'Deploying...' : 'Deploy'}
-													</button>
+													showDeployedLink ? (
+														<a
+															href={deploymentUrl}
+															target="_blank"
+															rel="noopener noreferrer"
+															onClick={(e) => e.stopPropagation()}
+															className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600/15 hover:bg-emerald-600/25 text-emerald-700 dark:text-emerald-300 border border-emerald-600/30 rounded-lg text-xs font-medium transition-colors"
+															title={`Open ${deploymentUrl}`}
+														>
+															<Check className="w-3 h-3" />
+															Live
+															<ExternalLink className="w-3 h-3" />
+														</a>
+													) : (
+														<button
+															onClick={(e) => {
+																e.stopPropagation();
+																handleProductionDeploy(chatId);
+															}}
+															disabled={isDeploying}
+															className="flex items-center gap-1.5 px-3 py-1.5 bg-accent hover:bg-accent/90 disabled:bg-accent/50 text-white rounded-lg text-xs font-medium transition-colors disabled:cursor-not-allowed"
+														>
+															{isDeploying ? (
+																<StatusLoader size="sm" color="accent" />
+															) : (
+																<Zap className="w-3 h-3" />
+															)}
+															{deployButtonLabel}
+														</button>
+													)
 												)}
 											</div>
 										</div>

@@ -757,6 +757,8 @@ export default function Chat() {
 									chatId={chatId}
 									isDeploying={isDeploying}
 									handleProductionDeploy={handleProductionDeploy}
+									deploymentUrl={productionDeploymentUrl}
+									isRedeployReady={isRedeployReady}
 									runtimeErrorCount={runtimeErrorCount}
 									staticIssueCount={staticIssueCount}
 									isDebugging={isDebugging}

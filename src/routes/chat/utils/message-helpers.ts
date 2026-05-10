@@ -35,8 +35,18 @@ export function isConversationalMessage(messageId: string): boolean {
         'code_reviewed',
         'generation-complete',
         'core_app_complete',
+        // Deployment + export status messages — surface them in the chat so the
+        // user gets a confirmation (with the live URL) instead of a silent UI.
+        'production_deployment_started',
+        'deployment_completed',
+        'production_deployment_error',
+        'github_export_started',
+        'github_export_progress',
+        'github_export_completed',
+        'github_export_error',
+        'deployment_error',
     ];
-    
+
     return conversationalIds.includes(messageId) || messageId.startsWith('conv-');
 }
 
