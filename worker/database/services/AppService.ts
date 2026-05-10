@@ -5,6 +5,7 @@
 import { BaseService } from './BaseService';
 import * as schema from '../schema';
 import { eq, and, or, desc, asc, sql, isNull, inArray } from 'drizzle-orm';
+import type { DrizzleD1Database } from 'drizzle-orm/d1';
 import { generateId } from '../../utils/idGenerator';
 import { formatRelativeTime } from '../../utils/timeFormatter';
 import type {
@@ -452,17 +453,36 @@ export class AppService extends BaseService {
      * Check if user owns an app and get visibility
      */
     async checkAppOwnership(appId: string, userId: string): Promise<OwnershipResult> {
-        // Use read replica for ownership checks
-        const readDb = this.getReadDb('fast');
-        const app = await readDb
-            .select({
-                id: schema.apps.id,
-                userId: schema.apps.userId,
-                visibility: schema.apps.visibility
-            })
-            .from(schema.apps)
-            .where(eq(schema.apps.id, appId))
-            .get();
+        const select = (db: DrizzleD1Database<typeof schema>) =>
+            db
+                .select({
+                    id: schema.apps.id,
+                    userId: schema.apps.userId,
+                    visibility: schema.apps.visibility,
+                })
+                .from(schema.apps)
+                .where(eq(schema.apps.id, appId))
+                .get();
+
+        // Fast path: read from a replica.
+        let app = await select(this.getReadDb('fast'));
+
+        // Replica lag: a row that was just written to the primary (e.g. the
+        // placeholder row inserted at the start of agent.initialize()) may not
+        // have replicated yet. Retry against the primary before returning a
+        // false-negative that the user reads as "You can only access your own
+        // resources".
+        if (!app) {
+            app = await this.database
+                .select({
+                    id: schema.apps.id,
+                    userId: schema.apps.userId,
+                    visibility: schema.apps.visibility,
+                })
+                .from(schema.apps)
+                .where(eq(schema.apps.id, appId))
+                .get();
+        }
 
         if (!app) {
             return { exists: false, isOwner: false };
@@ -471,7 +491,7 @@ export class AppService extends BaseService {
         return {
             exists: true,
             isOwner: app.userId === userId,
-            visibility: app.visibility as 'private' | 'public' | null
+            visibility: app.visibility as 'private' | 'public' | null,
         };
     }
 
