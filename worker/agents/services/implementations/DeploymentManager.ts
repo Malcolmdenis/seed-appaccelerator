@@ -10,6 +10,7 @@ import { FileOutputType } from '../../schemas';
 import { generateId } from '../../../utils/idGenerator';
 import { generateAppProxyToken, generateAppProxyUrl } from '../../../services/aigateway-proxy/controller';
 import { BaseAgentService } from './BaseAgentService';
+import type { StructuredLogger } from '../../../logger';
 import { ServiceOptions } from '../interfaces/IServiceOptions';
 import { BaseSandboxService } from 'worker/services/sandbox/BaseSandboxService';
 import { getSandboxService } from '../../../services/sandbox/factory';
@@ -777,7 +778,7 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
     private async probeDeployedUrl(
         deploymentUrl: string,
         callbacks: CloudflareDeploymentCallbacks | undefined,
-        logger: { info: (...a: unknown[]) => void; warn: (...a: unknown[]) => void; error: (...a: unknown[]) => void; },
+        logger: StructuredLogger,
     ): Promise<void> {
         // Brief settle time — dispatch namespace propagation can lag a few seconds
         // after the deploy returns.
