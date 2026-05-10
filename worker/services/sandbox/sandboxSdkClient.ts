@@ -1753,6 +1753,55 @@ export class SandboxSdkClient extends BaseSandboxService {
                 throw new Error('CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN must be set in environment');
             }
 
+            // Step 0: Patch the worker source so Vite bundles user-routes statically.
+            //
+            // The vibesdk vite-reference template ships a worker entry that does:
+            //     const mod = (await import(/* @vite-ignore */ spec)) as UserRoutesModule;
+            // where `spec` is a runtime string like './user-routes?t=<bust>'.
+            // The @vite-ignore directive opts out of bundling, so Vite never emits
+            // a chunk for user-routes. The deploy uploads index.js, the worker
+            // boots, and the first /api/* request 500s with
+            // "No such module 'user-routes'".
+            //
+            // Strip the @vite-ignore directive and rewrite the dynamic spec to a
+            // string-literal path. Vite then statically analyses the call,
+            // emits user-routes-<hash>.js as a sibling chunk in dist/<env>/,
+            // and our recursive sibling-module scanner uploads it as part of
+            // the deploy. No runtime changes — the dynamic-import contract is
+            // preserved.
+            this.logger.info('[deploy] Step 0/3 — patching worker entry for static user-routes bundling', { t: elapsed() });
+            try {
+                const patchScript =
+                    `set -e; ` +
+                    // Bail early if the template doesn't follow this pattern at all.
+                    `if [ ! -f worker/index.ts ]; then echo "no worker/index.ts"; exit 0; fi; ` +
+                    `if ! grep -q "@vite-ignore" worker/index.ts; then echo "no @vite-ignore"; exit 0; fi; ` +
+                    // Replace any `await import(/* @vite-ignore */ <expr>)` with a
+                    // static-string dynamic import to ./user-routes (or ./userRoutes
+                    // for the older base reference). The captured <expr> is
+                    // discarded; the literal string is what matters for Vite.
+                    // Use perl for portable in-place regex (BSD vs GNU sed differ).
+                    `if [ -f worker/user-routes.ts ]; then TARGET="./user-routes"; ` +
+                    `elif [ -f worker/userRoutes.ts ]; then TARGET="./userRoutes"; ` +
+                    `else echo "no user-routes source found"; exit 0; fi; ` +
+                    `perl -0777 -i -pe ` +
+                    `'s{await\\s+import\\s*\\(\\s*/\\*\\s*@vite-ignore\\s*\\*/\\s*[^)]*\\)}` +
+                    `{await import("'"$TARGET"'")}g' worker/index.ts; ` +
+                    `echo "patched worker/index.ts → static import of $TARGET"`;
+                const patchResult = await this.executeCommand(instanceId, `bash -c '${patchScript.replace(/'/g, "'\\''")}'`);
+                this.logger.info('[deploy] worker entry patch finished', {
+                    exitCode: patchResult.exitCode,
+                    stdoutTail: (patchResult.stdout || '').slice(-300),
+                    stderrTail: (patchResult.stderr || '').slice(-300),
+                    t: elapsed(),
+                });
+            } catch (e) {
+                // Non-fatal: if the patch fails the build still runs and the
+                // dynamic-import path is just left as-is. Worst case the user
+                // sees the same "No such module" they would have anyway.
+                this.logger.warn('[deploy] worker entry patch threw; continuing without it', e);
+            }
+
             // Step 1: Run build commands (bun run build && bunx wrangler build)
             this.logger.info('[deploy] Step 1/3 — running bun run build', { t: elapsed() });
             const buildResult = await this.executeCommand(instanceId, 'bun run build');
