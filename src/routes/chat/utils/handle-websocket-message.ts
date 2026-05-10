@@ -852,6 +852,26 @@ export function createWebSocketMessageHandler(deps: HandleMessageDeps) {
             case 'production_deployment_error': {
                 clearDeploymentTimeout?.();
                 setIsDeploying(false);
+
+                // Post-deploy probe warning: the upload to Cloudflare succeeded
+                // (URL is live) but the app crashes on first request. Surface it
+                // to the user without wiping the deployment URL — they should
+                // still be able to view/visit the URL and trigger a fix.
+                const isPostDeployProbe = typeof message.error === 'string'
+                    && message.error.startsWith('POST_DEPLOY_PROBE_');
+
+                if (isPostDeployProbe) {
+                    setDeploymentError(message.error);
+                    sendMessage(createAIMessage('production_deployment_error', message.message));
+                    toast.warning('Deployed but the live URL is returning a server error — check chat for details.');
+                    onDebugMessage?.('warning',
+                        'Post-deploy probe failed',
+                        message.message,
+                        'Production Health Check',
+                    );
+                    break;
+                }
+
                 setDeploymentError(message.error || 'Unknown deployment error');
                 setProductionDeploymentUrl('');
                 setIsRedeployReady(true);
@@ -859,8 +879,8 @@ export function createWebSocketMessageHandler(deps: HandleMessageDeps) {
                 sendMessage(createAIMessage('production_deployment_error', `Deployment failed: ${message.error}\n\nYou can try deploying again.`));
 
                 toast.error(`Error: ${message.error}`);
-                
-                onDebugMessage?.('error', 
+
+                onDebugMessage?.('error',
                     'Deployment Failed - State Reset',
                     `Error: ${message.error}\nDeployment button reset for retry`,
                     'Deployment Error Recovery'

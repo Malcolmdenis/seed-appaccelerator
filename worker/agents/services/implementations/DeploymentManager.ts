@@ -752,10 +752,79 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
             deploymentUrl: deploymentUrl || ''
         });
 
-        return { 
+        // Post-deploy probe: a successful upload doesn't mean the app actually
+        // runs. Hit the deployed URL once; if it 5xxs, surface the response
+        // body to chat as a warning so the user (and the agent) know the
+        // deploy is broken in production even though it works in the sandbox.
+        if (deploymentUrl) {
+            this.probeDeployedUrl(deploymentUrl, callbacks, logger).catch((err) => {
+                logger.warn('Post-deploy probe threw', err);
+            });
+        }
+
+        return {
             deploymentUrl: deploymentUrl || null,
             deploymentId: deploymentId
         };
+    }
+
+    /**
+     * Probe the freshly-deployed URL to detect "uploaded but crashing" apps.
+     * Best-effort: any failure to probe is logged and ignored — we never want
+     * the probe itself to block the user. A 5xx surfaces a warning event so
+     * both the chat UI and the agent's conversation context can see it.
+     */
+    private async probeDeployedUrl(
+        deploymentUrl: string,
+        callbacks: CloudflareDeploymentCallbacks | undefined,
+        logger: { info: (...a: unknown[]) => void; warn: (...a: unknown[]) => void; error: (...a: unknown[]) => void; },
+    ): Promise<void> {
+        // Brief settle time — dispatch namespace propagation can lag a few seconds
+        // after the deploy returns.
+        await new Promise((r) => setTimeout(r, 1500));
+
+        const ctrl = new AbortController();
+        const probeTimeout = setTimeout(() => ctrl.abort(), 8000);
+        let status = 0;
+        let bodyExcerpt = '';
+        try {
+            const resp = await fetch(deploymentUrl, {
+                method: 'GET',
+                redirect: 'follow',
+                signal: ctrl.signal,
+                headers: { 'User-Agent': 'AppAccelerator-PostDeployProbe/1' },
+            });
+            status = resp.status;
+            if (status >= 500) {
+                const text = await resp.text().catch(() => '');
+                bodyExcerpt = text.slice(0, 800);
+            }
+        } catch (err) {
+            logger.warn('Post-deploy probe fetch failed', { deploymentUrl, err: String(err) });
+            return;
+        } finally {
+            clearTimeout(probeTimeout);
+        }
+
+        if (status >= 500) {
+            logger.error('Post-deploy probe detected 5xx', { deploymentUrl, status, bodyExcerpt });
+            // Reuse the production_deployment_error channel so the chat UI's
+            // existing handler renders this prominently. The deploy itself
+            // succeeded (URL is live), but the app is crashing on first hit.
+            callbacks?.onError?.({
+                message:
+                    `Deployed, but the live URL is returning ${status}. The upload to Cloudflare worked, ` +
+                    `but the app crashes on the first request. This usually means a missing binding ` +
+                    `(D1/KV/secret) or a Workers-incompatible API in the generated code. ` +
+                    `URL: ${deploymentUrl}` +
+                    (bodyExcerpt ? `\n\nResponse body (truncated):\n${bodyExcerpt}` : ''),
+                instanceId: '',
+                error: `POST_DEPLOY_PROBE_${status}`,
+            });
+            return;
+        }
+
+        logger.info('Post-deploy probe healthy', { deploymentUrl, status });
     }
 
 }
