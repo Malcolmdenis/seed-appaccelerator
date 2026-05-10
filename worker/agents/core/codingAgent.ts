@@ -214,9 +214,13 @@ export class CodeGeneratorAgent extends Agent<Env, AgentState> implements AgentI
         const userConfigsRecord = await modelConfigService.getUserModelConfigs(this.state.metadata.userId);
         this.behavior.setUserModelConfigs(userConfigsRecord);
         this.logger().info(`Agent ${this.getAgentId()} session: ${this.state.sessionId} onStart: User configs loaded successfully`, {userConfigsRecord});
+
+        // Backfill production deployment URL once per DO boot (not on every connect)
+        // so onConnect can stay synchronous and the WS handshake doesn't time out.
+        await this.backfillProductionDeploymentUrl();
     }
     
-    async onConnect(connection: Connection, ctx: ConnectionContext) {
+    onConnect(connection: Connection, ctx: ConnectionContext) {
         this.logger().info(`Agent connected for agent ${this.getAgentId()}`, { connection, ctx });
         let previewUrl = '';
         try {
@@ -227,36 +231,43 @@ export class CodeGeneratorAgent extends Agent<Env, AgentState> implements AgentI
             this.logger().error('Error getting preview URL:', error);
         }
 
-        // Backfill productionDeploymentUrl from the database for apps deployed
-        // before we started persisting it on agent state. Without this, reload
-        // would always show "Ready to Deploy" even for apps that are already live.
-        if (!this.state.productionDeploymentUrl) {
-            try {
-                const appService = new AppService(this.env);
-                const deploymentId = await appService.getDeploymentId(this.getAgentId());
-                const customDomain = (this.env as { CUSTOM_DOMAIN?: string }).CUSTOM_DOMAIN;
-                if (deploymentId && customDomain) {
-                    const restoredUrl = `https://${deploymentId}.${customDomain}`;
-                    this.setState({
-                        ...this.state,
-                        productionDeploymentUrl: restoredUrl,
-                        productionDeploymentId: deploymentId,
-                    });
-                    this.logger().info('Backfilled productionDeploymentUrl from DB', {
-                        deploymentId,
-                        restoredUrl,
-                    });
-                }
-            } catch (err) {
-                this.logger().warn('Failed to backfill deployment URL from DB', err);
-            }
-        }
-
+        // Send agent_connected synchronously — the WS handshake window is short.
+        // The backfill (DB lookup) runs in onStart instead so it doesn't block this.
         sendToConnection(connection, WebSocketMessageResponses.AGENT_CONNECTED, {
             state: this.state,
             templateDetails: this.behavior.getTemplateDetails(),
-            previewUrl: previewUrl
+            previewUrl: previewUrl,
         });
+    }
+
+    /**
+     * Backfill productionDeploymentUrl from the apps table for agents that
+     * were deployed before we started persisting it on agent state. Runs once
+     * per Durable Object boot — onConnect just reads from state, kept sync.
+     */
+    private async backfillProductionDeploymentUrl(): Promise<void> {
+        if (this.state?.productionDeploymentUrl) return;
+        const agentId = this.getAgentId();
+        if (!agentId) return;
+        try {
+            const appService = new AppService(this.env);
+            const deploymentId = await appService.getDeploymentId(agentId);
+            const customDomain = (this.env as { CUSTOM_DOMAIN?: string }).CUSTOM_DOMAIN;
+            if (deploymentId && customDomain) {
+                const restoredUrl = `https://${deploymentId}.${customDomain}`;
+                this.setState({
+                    ...this.state,
+                    productionDeploymentUrl: restoredUrl,
+                    productionDeploymentId: deploymentId,
+                });
+                this.logger().info('Backfilled productionDeploymentUrl from DB', {
+                    deploymentId,
+                    restoredUrl,
+                });
+            }
+        } catch (err) {
+            this.logger().warn('Failed to backfill deployment URL from DB', err);
+        }
     }
 
     private initLogger(agentId: string, userId: string, sessionId?: string) {
