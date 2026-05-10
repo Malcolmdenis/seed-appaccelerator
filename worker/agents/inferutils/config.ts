@@ -159,11 +159,14 @@ const DEFAULT_AGENT_CONFIG: AgentConfig = {
         fallbackModel: AIModels.GEMINI_2_5_PRO,
     },
     deepDebugger: {
-        name: AIModels.GEMINI_3_FLASH_PREVIEW,
+        // Grok handles long agentic tool loops correctly; Gemini Flash Preview
+        // tends to no-op (call mark_debugging_complete immediately without any
+        // investigation/fix tools). Requires GROK_API_KEY in worker secrets.
+        name: AIModels.GROK_4_1_FAST,
         reasoning_effort: 'high',
         max_tokens: 8000,
         temperature: 1,
-        fallbackModel: AIModels.GEMINI_2_5_FLASH,
+        fallbackModel: AIModels.GEMINI_2_5_PRO,
     },
     fileRegeneration: {
         name: AIModels.GEMINI_3_FLASH_PREVIEW,

@@ -9,7 +9,7 @@ import { FileState } from '../core/state';
 import { ToolDefinition } from '../tools/types';
 import { AgentOperationWithTools, OperationOptions, ToolSession, ToolCallbacks } from './common';
 import { GenerationContext } from '../domain/values/GenerationContext';
-import { createMarkDebuggingCompleteTool } from '../tools/toolkit/completion-signals';
+import { createMarkDebuggingCompleteTool, type DebugProgressTracker } from '../tools/toolkit/completion-signals';
 import { SYSTEM_PROMPT } from './prompts/deepDebuggerPrompts';
 
 const USER_PROMPT = (
@@ -167,13 +167,25 @@ export class DeepDebuggerOperation extends AgentOperationWithTools<
     ): ToolDefinition<unknown, unknown>[] {
         const { logger } = options;
 
-        const tools = buildDebugTools(
+        const rawTools = buildDebugTools(
             session,
             logger,
             callbacks.toolRenderer,
         );
 
-        tools.push(createMarkDebuggingCompleteTool(logger));
+        // Wrap each investigation/fix tool to bump a shared counter. The
+        // mark_debugging_complete tool then reads the counter and refuses
+        // to terminate the session if zero real work happened.
+        const progress: DebugProgressTracker = { toolCallsMade: 0 };
+        const tools: ToolDefinition<unknown, unknown>[] = rawTools.map((td) => ({
+            ...td,
+            implementation: (async (args: unknown) => {
+                progress.toolCallsMade += 1;
+                return td.implementation(args as never);
+            }) as typeof td.implementation,
+        }));
+
+        tools.push(createMarkDebuggingCompleteTool(logger, progress) as ToolDefinition<unknown, unknown>);
 
         return tools;
     }

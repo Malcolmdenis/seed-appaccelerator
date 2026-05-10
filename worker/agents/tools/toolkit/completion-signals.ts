@@ -5,6 +5,19 @@ import { ICodingAgent } from 'worker/agents/services/interfaces/ICodingAgent';
 type CompletionResult = {
 	acknowledged: true;
 	message: string;
+} | {
+	acknowledged: false;
+	error: string;
+};
+
+/**
+ * Shared mutable counter that tracks how many real investigation/fix tool
+ * calls happened in a debug session before the LLM tried to mark it complete.
+ * Used to reject premature completion (Gemini Flash sometimes calls
+ * mark_debugging_complete immediately without doing any work).
+ */
+export type DebugProgressTracker = {
+	toolCallsMade: number;
 };
 
 export function createMarkGenerationCompleteTool(
@@ -36,7 +49,8 @@ export function createMarkGenerationCompleteTool(
 }
 
 export function createMarkDebuggingCompleteTool(
-	logger: StructuredLogger
+	logger: StructuredLogger,
+	progress?: DebugProgressTracker,
 ): ToolDefinition<{ summary: string; issuesFixed: number }, CompletionResult> {
 	return tool({
 		name: 'mark_debugging_complete',
@@ -54,9 +68,29 @@ Once you call this tool, make NO further tool calls. The system will stop immedi
 			issuesFixed: t.number().describe('Count of issues successfully resolved'),
 		},
 		run: async ({ summary, issuesFixed }) => {
+			// Reject premature completion: a debug session that called zero
+			// investigation/fix tools cannot have legitimately resolved
+			// anything. Returning an error here keeps the LLM in the loop
+			// instead of letting it exit with a chat-only "I'll do it" reply.
+			if (progress && progress.toolCallsMade === 0) {
+				logger.warn('Rejected premature mark_debugging_complete: no tool calls were made in this session', {
+					summary,
+					issuesFixed,
+				});
+				return {
+					acknowledged: false as const,
+					error:
+						'PREMATURE_COMPLETION: You have not called any investigation or fix tools yet. ' +
+						'Before marking debugging complete you must use read_files, get_runtime_errors, ' +
+						'run_analysis, or get_logs to investigate, and regenerate_file to apply fixes ' +
+						'(unless investigation confirms there is nothing to fix). Continue debugging now.',
+				};
+			}
+
 			logger.info('Debugging marked complete', {
 				summary,
 				issuesFixed,
+				toolCallsMade: progress?.toolCallsMade,
 				timestamp: new Date().toISOString()
 			});
 
