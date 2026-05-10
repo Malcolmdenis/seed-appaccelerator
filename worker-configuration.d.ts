@@ -19,6 +19,7 @@ declare namespace Cloudflare {
 		OPENROUTER_API_KEY: string;
 		CEREBRAS_API_KEY: string;
 		GROQ_API_KEY: string;
+		GROK_API_KEY: string;
 		GOOGLE_VERTEX_AI_API_KEY: string;
 		PLATFORM_MODEL_PROVIDERS: string;
 		SANDBOX_SERVICE_API_KEY: string;
