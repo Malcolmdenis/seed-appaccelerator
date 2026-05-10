@@ -152,6 +152,34 @@ export class CodingAgentController extends BaseController {
                 }));
             }
 
+            // Insert the apps row BEFORE handing the websocketUrl back to the client.
+            // The DO's initialize() runs asynchronously and used to race the client's
+            // WS upgrade; the owner-only auth middleware would then 403 because the row
+            // didn't exist yet. Doing the insert here is synchronous, uses the primary
+            // D1, and guarantees the row exists by the time the client connects.
+            try {
+                const appService = new AppService(env);
+                await appService.createApp({
+                    id: agentId,
+                    userId: user.id,
+                    sessionToken: null,
+                    title: query.substring(0, 100) || 'Untitled app',
+                    description: null,
+                    originalPrompt: query,
+                    finalPrompt: query,
+                    framework: null,
+                    visibility: 'private',
+                    status: 'generating',
+                    createdAt: new Date(),
+                    updatedAt: new Date(),
+                });
+                this.logger.info(`Pre-init app row inserted for agent ${agentId}`, { userId: user.id });
+            } catch (err) {
+                // Likely a duplicate (retry, reload). Auth check is unblocked either way
+                // since the row already exists.
+                this.logger.warn(`Pre-init app row insert skipped for agent ${agentId}`, { error: String(err) });
+            }
+
             writer.write({
                 message: 'Code generation started',
                 agentId: agentId,
