@@ -1753,52 +1753,91 @@ export class SandboxSdkClient extends BaseSandboxService {
                 throw new Error('CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN must be set in environment');
             }
 
-            // Step 0: Patch the worker source so Vite bundles user-routes statically.
+            // Step 0: Patch the worker source so user-routes ends up in the bundle.
             //
             // The vibesdk vite-reference template ships a worker entry that does:
             //     const mod = (await import(/* @vite-ignore */ spec)) as UserRoutesModule;
-            // where `spec` is a runtime string like './user-routes?t=<bust>'.
-            // The @vite-ignore directive opts out of bundling, so Vite never emits
-            // a chunk for user-routes. The deploy uploads index.js, the worker
-            // boots, and the first /api/* request 500s with
-            // "No such module 'user-routes'".
+            // The @vite-ignore directive tells Vite NOT to bundle the import, so
+            // user-routes is missing from the deploy and the dispatched worker 500s
+            // on the first /api/* call with "No such module 'user-routes'".
             //
-            // Strip the @vite-ignore directive and rewrite the dynamic spec to a
-            // string-literal path. Vite then statically analyses the call,
-            // emits user-routes-<hash>.js as a sibling chunk in dist/<env>/,
-            // and our recursive sibling-module scanner uploads it as part of
-            // the deploy. No runtime changes — the dynamic-import contract is
-            // preserved.
+            // Fix: read the source via the sandbox file API (no shell escaping
+            // games), inject a top-level `import * as ... from './user-routes'`
+            // so Vite WILL bundle the module, then replace the dynamic-import
+            // expression with that statically-imported namespace. After this,
+            // the entire worker is one self-contained index.js — no separate
+            // chunks needed, no upload-side gymnastics.
             this.logger.info('[deploy] Step 0/3 — patching worker entry for static user-routes bundling', { t: elapsed() });
             try {
-                const patchScript =
-                    `set -e; ` +
-                    // Bail early if the template doesn't follow this pattern at all.
-                    `if [ ! -f worker/index.ts ]; then echo "no worker/index.ts"; exit 0; fi; ` +
-                    `if ! grep -q "@vite-ignore" worker/index.ts; then echo "no @vite-ignore"; exit 0; fi; ` +
-                    // Replace any `await import(/* @vite-ignore */ <expr>)` with a
-                    // static-string dynamic import to ./user-routes (or ./userRoutes
-                    // for the older base reference). The captured <expr> is
-                    // discarded; the literal string is what matters for Vite.
-                    // Use perl for portable in-place regex (BSD vs GNU sed differ).
-                    `if [ -f worker/user-routes.ts ]; then TARGET="./user-routes"; ` +
-                    `elif [ -f worker/userRoutes.ts ]; then TARGET="./userRoutes"; ` +
-                    `else echo "no user-routes source found"; exit 0; fi; ` +
-                    `perl -0777 -i -pe ` +
-                    `'s{await\\s+import\\s*\\(\\s*/\\*\\s*@vite-ignore\\s*\\*/\\s*[^)]*\\)}` +
-                    `{await import("'"$TARGET"'")}g' worker/index.ts; ` +
-                    `echo "patched worker/index.ts → static import of $TARGET"`;
-                const patchResult = await this.executeCommand(instanceId, `bash -c '${patchScript.replace(/'/g, "'\\''")}'`);
-                this.logger.info('[deploy] worker entry patch finished', {
-                    exitCode: patchResult.exitCode,
-                    stdoutTail: (patchResult.stdout || '').slice(-300),
-                    stderrTail: (patchResult.stderr || '').slice(-300),
-                    t: elapsed(),
-                });
+                const session2 = await this.getInstanceSession(instanceId);
+                const indexPath = `/workspace/${instanceId}/worker/index.ts`;
+                const userRoutesHyphen = `/workspace/${instanceId}/worker/user-routes.ts`;
+                const userRoutesCamel = `/workspace/${instanceId}/worker/userRoutes.ts`;
+
+                const indexFile = await session2.readFile(indexPath);
+                if (!indexFile.success) {
+                    this.logger.info('[deploy] no worker/index.ts found — skipping patch');
+                } else {
+                    const original = indexFile.content;
+                    if (!original.includes('@vite-ignore')) {
+                        this.logger.info('[deploy] worker/index.ts has no @vite-ignore — skipping patch');
+                    } else {
+                        const hyphenExists = (await session2.readFile(userRoutesHyphen)).success;
+                        const camelExists = !hyphenExists && (await session2.readFile(userRoutesCamel)).success;
+                        const target = hyphenExists ? './user-routes' : (camelExists ? './userRoutes' : null);
+
+                        if (!target) {
+                            this.logger.info('[deploy] no user-routes source file found — skipping patch');
+                        } else {
+                            // 1. Match the entire `(await import(/* @vite-ignore */ <expr>))`
+                            //    or `await import(/* @vite-ignore */ <expr>)` and rewrite to
+                            //    a reference that uses our injected static import.
+                            // 2. Inject the static import at the top of the file (after any
+                            //    existing imports / comments — simplest is to prepend).
+                            const STATIC_IMPORT_NAMESPACE = '__seedUserRoutesStatic';
+                            const headerLine =
+                                `import * as ${STATIC_IMPORT_NAMESPACE} from '${target}';\n`;
+
+                            // Match the whole `await import(/* @vite-ignore */ <anything until matching )>)`.
+                            // Allow nested parens by using a non-greedy match limited to typical use:
+                            // the template uses a single identifier or template literal.
+                            // We replace the whole expression with:
+                            //   (Promise.resolve(__seedUserRoutesStatic))
+                            // which preserves the surrounding `(await ...) as UserRoutesModule`
+                            // shape because await on a Promise resolves to the namespace.
+                            const dynImportRe =
+                                /await\s+import\s*\(\s*\/\*\s*@vite-ignore\s*\*\/[^)]*\)/g;
+
+                            let patched = original.replace(
+                                dynImportRe,
+                                `await Promise.resolve(${STATIC_IMPORT_NAMESPACE})`,
+                            );
+
+                            if (patched === original) {
+                                this.logger.warn(
+                                    '[deploy] @vite-ignore present but regex did not match — patch skipped',
+                                );
+                            } else {
+                                // Prepend the static import so Vite bundles user-routes
+                                // into index.js. Avoid double-injection if a previous
+                                // failed deploy already added it.
+                                if (!patched.includes(`from '${target}'`)) {
+                                    patched = headerLine + patched;
+                                }
+                                const writeRes = await session2.writeFile(indexPath, patched);
+                                this.logger.info('[deploy] worker/index.ts patched', {
+                                    target,
+                                    writeOk: writeRes.success,
+                                    sizeKB: (patched.length / 1024).toFixed(2),
+                                });
+                            }
+                        }
+                    }
+                }
             } catch (e) {
                 // Non-fatal: if the patch fails the build still runs and the
                 // dynamic-import path is just left as-is. Worst case the user
-                // sees the same "No such module" they would have anyway.
+                // sees the same "No such module" they would have seen anyway.
                 this.logger.warn('[deploy] worker entry patch threw; continuing without it', e);
             }
 
