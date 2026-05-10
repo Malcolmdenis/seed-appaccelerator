@@ -467,14 +467,31 @@ export class UserConversationProcessor extends AgentOperation<GenerationContext,
             // Check if final response is duplicate of last assistant message in tool context
             const finalResponse = createAssistantMessage(result.string);
             const lastToolContextMessage = result.toolCallContext?.messages?.[result.toolCallContext.messages.length - 1];
-            const isDuplicate = lastToolContextMessage?.role === 'assistant' && 
+            const isDuplicate = lastToolContextMessage?.role === 'assistant' &&
                                lastToolContextMessage?.content === finalResponse.content;
-            
-            if (!isDuplicate) {
+
+            const hasToolMessages = !!result.toolCallContext?.messages?.length;
+            const finalContent = typeof finalResponse.content === 'string' ? finalResponse.content.trim() : '';
+            const isEmpty = !finalContent;
+
+            if (isDuplicate) {
+                logger.info("Skipped duplicate final assistant response");
+            } else if (isEmpty && !hasToolMessages) {
+                // The LLM streamed nothing AND called no tools — almost always a Gemini
+                // safety filter on a benign prompt (e.g. "auth"). Surface this to the
+                // client and don't persist an empty assistant turn that would corrupt
+                // future history for this conversation.
+                logger.warn("LLM returned empty response with no tool calls — surfacing to client and skipping history persistence");
+                inputs.conversationResponseCallback(
+                    "I couldn't generate a response just now — this usually means the model declined to answer. Please try rephrasing your request.",
+                    aiConversationId,
+                    false,
+                );
+            } else if (isEmpty) {
+                logger.info("Skipped empty final assistant response (tools were called)");
+            } else {
                 messages.push({...finalResponse, conversationId: IdGenerator.generateConversationId()});
                 logger.info("Added final assistant response to history");
-            } else {
-                logger.info("Skipped duplicate final assistant response");
             }
 
             // Derive compacted running history for storage using stable IDs (no re-compaction)
