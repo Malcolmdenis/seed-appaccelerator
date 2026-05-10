@@ -128,21 +128,28 @@ export class CodeGeneratorAgent extends Agent<Env, AgentState> implements AgentI
         initArgs: AgentInitArgs<AgentState>,
         ..._args: unknown[]
     ): Promise<AgentState> {
-        const { inferenceContext } = initArgs;
+        const { inferenceContext, query } = initArgs;
         const sandboxSessionId = DeploymentManager.generateNewSessionId();
         this.initLogger(inferenceContext.metadata.agentId, inferenceContext.metadata.userId, sandboxSessionId);
 
         // Infrastructure setup
         await this.gitInit();
-        
+
+        // Create the DB record EARLY (before blueprint generation) so the owner-only
+        // auth check passes immediately. The frontend opens a WebSocket as soon as the
+        // agent ID exists; previously this raced blueprint generation and the WS would
+        // be denied for ~10-30s while owner_id wasn't yet known to the DB.
+        // After blueprint completes we update the same row with real title/description/etc.
+        await this.createPlaceholderApp(query);
+
         // Let behavior handle all state initialization (blueprint, projectName, etc.)
         await this.behavior.initialize({
             ...initArgs,
             sandboxSessionId // Pass generated session ID to behavior
         });
-        
+
         await this.saveToDatabase();
-        
+
         return this.state;
     }
     
@@ -349,30 +356,76 @@ export class CodeGeneratorAgent extends Agent<Env, AgentState> implements AgentI
         return this.behavior.importTemplate(templateName);
     }
     
+    /**
+     * Insert a minimal app row immediately so the owner-only auth check can succeed
+     * for WebSocket / connect requests that arrive while blueprint generation is still
+     * running. The row is enriched in `saveToDatabase` once the blueprint is ready.
+     */
+    protected async createPlaceholderApp(query: string) {
+        const agentId = this.state?.metadata?.agentId ?? this.getAgentId();
+        const userId = this.state?.metadata?.userId;
+        if (!agentId || !userId) {
+            this.logger().warn('Skipping placeholder app insert — missing agentId or userId', {
+                agentId,
+                hasUserId: Boolean(userId),
+            });
+            return;
+        }
+        const appService = new AppService(this.env);
+        try {
+            await appService.createApp({
+                id: agentId,
+                userId,
+                sessionToken: null,
+                title: query.substring(0, 100) || 'Untitled app',
+                description: null,
+                originalPrompt: query,
+                finalPrompt: query,
+                framework: null,
+                visibility: 'private',
+                status: 'generating',
+                createdAt: new Date(),
+                updatedAt: new Date(),
+            });
+            this.logger().info(`Placeholder app row inserted for agent ${agentId}`, { userId });
+        } catch (err) {
+            // Don't block the rest of init — but log it loudly because owner-only auth
+            // will fail until this succeeds.
+            this.logger().error('Failed to insert placeholder app row', err, { agentId, userId });
+        }
+    }
+
     protected async saveToDatabase() {
         this.logger().info(`Saving agent ${this.getAgentId()} to database`);
-        // Save the app to database (authenticated users only)
         const appService = new AppService(this.env);
-        await appService.createApp({
-            id: this.state.metadata.agentId,
-            userId: this.state.metadata.userId,
-            sessionToken: null,
+        const agentId = this.state.metadata.agentId;
+        const updates = {
             title: this.state.blueprint.title || this.state.query.substring(0, 100),
             description: this.state.blueprint.description,
-            originalPrompt: this.state.query,
-            finalPrompt: this.state.query,
             framework: this.state.blueprint.frameworks.join(','),
-            visibility: 'private',
-            status: 'generating',
+            status: 'generating' as const,
+        };
+        const updated = await appService.updateApp(agentId, updates);
+        if (!updated) {
+            // Placeholder insert may have failed earlier — fall back to a full create.
+            this.logger().warn('updateApp returned false, falling back to createApp', { agentId });
+            await appService.createApp({
+                id: agentId,
+                userId: this.state.metadata.userId,
+                sessionToken: null,
+                ...updates,
+                originalPrompt: this.state.query,
+                finalPrompt: this.state.query,
+                visibility: 'private',
                 createdAt: new Date(),
-            updatedAt: new Date()
+                updatedAt: new Date(),
             });
-        this.logger().info(`App saved successfully to database for agent ${this.state.metadata.agentId}`, { 
-            agentId: this.state.metadata.agentId, 
+        }
+        this.logger().info(`App row updated with blueprint metadata for agent ${agentId}`, {
+            agentId,
             userId: this.state.metadata.userId,
-            visibility: 'private'
+            visibility: 'private',
         });
-        this.logger().info(`Agent initialized successfully for agent ${this.state.metadata.agentId}`);
     }
 
     // ==========================================
