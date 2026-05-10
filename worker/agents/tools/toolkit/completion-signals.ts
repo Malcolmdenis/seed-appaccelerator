@@ -5,10 +5,11 @@ import { ICodingAgent } from 'worker/agents/services/interfaces/ICodingAgent';
 type CompletionResult = {
 	acknowledged: true;
 	message: string;
-} | {
-	acknowledged: false;
-	error: string;
 };
+
+type DebugCompletionResult =
+	| { acknowledged: true; message: string }
+	| { acknowledged: false; error: string };
 
 /**
  * Shared mutable counter that tracks how many real investigation/fix tool
@@ -51,7 +52,7 @@ export function createMarkGenerationCompleteTool(
 export function createMarkDebuggingCompleteTool(
 	logger: StructuredLogger,
 	progress?: DebugProgressTracker,
-): ToolDefinition<{ summary: string; issuesFixed: number }, CompletionResult> {
+): ToolDefinition<{ summary: string; issuesFixed: number }, DebugCompletionResult> {
 	return tool({
 		name: 'mark_debugging_complete',
 		description: `Signal that debugging task is complete. Use this when:
