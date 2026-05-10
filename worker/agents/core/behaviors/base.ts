@@ -1244,6 +1244,14 @@ export abstract class BaseCodingBehavior<TState extends BaseProjectState>
                     this.getAgentId(),
                     result.deploymentId
                 );
+
+                // Persist on agent state so a page reload doesn't ask the user
+                // to redeploy something that's already live.
+                this.setState({
+                    ...this.state,
+                    productionDeploymentUrl: result.deploymentUrl,
+                    productionDeploymentId: result.deploymentId,
+                });
             }
 
             return result.deploymentUrl ? { deploymentUrl: result.deploymentUrl } : null;

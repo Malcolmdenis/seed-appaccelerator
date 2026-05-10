@@ -258,6 +258,26 @@ export class AppService extends BaseService {
     }
 
     /**
+     * Fetch the persisted deployment id for an app (or null if it has never been deployed).
+     * Used to backfill the production deployment URL on agent reconnect for apps that
+     * were deployed before the URL started being persisted to agent state.
+     */
+    async getDeploymentId(appId: string): Promise<string | null> {
+        if (!appId) return null;
+        try {
+            const row = await this.database
+                .select({ deploymentId: schema.apps.deploymentId })
+                .from(schema.apps)
+                .where(eq(schema.apps.id, appId))
+                .get();
+            return row?.deploymentId ?? null;
+        } catch (error) {
+            this.logger.error('[AppService] Failed to fetch deployment id', { appId, error });
+            return null;
+        }
+    }
+
+    /**
      * Update app with GitHub repository URL and visibility
      */
     async updateGitHubRepository(

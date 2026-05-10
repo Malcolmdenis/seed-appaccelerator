@@ -60,6 +60,11 @@ export interface BaseProjectState {
     lastPackageJson?: string;
     pendingUserInputs: string[];
     projectUpdatesAccumulator: string[];
+
+    // Production deployment — persisted so the UI can restore the deployed badge
+    // on reload instead of showing the "Ready to Deploy" prompt again.
+    productionDeploymentUrl?: string;
+    productionDeploymentId?: string;
     
     // Deep debug
     lastDeepDebugTranscript: string | null;

@@ -216,7 +216,7 @@ export class CodeGeneratorAgent extends Agent<Env, AgentState> implements AgentI
         this.logger().info(`Agent ${this.getAgentId()} session: ${this.state.sessionId} onStart: User configs loaded successfully`, {userConfigsRecord});
     }
     
-    onConnect(connection: Connection, ctx: ConnectionContext) {
+    async onConnect(connection: Connection, ctx: ConnectionContext) {
         this.logger().info(`Agent connected for agent ${this.getAgentId()}`, { connection, ctx });
         let previewUrl = '';
         try {
@@ -226,6 +226,32 @@ export class CodeGeneratorAgent extends Agent<Env, AgentState> implements AgentI
         } catch (error) {
             this.logger().error('Error getting preview URL:', error);
         }
+
+        // Backfill productionDeploymentUrl from the database for apps deployed
+        // before we started persisting it on agent state. Without this, reload
+        // would always show "Ready to Deploy" even for apps that are already live.
+        if (!this.state.productionDeploymentUrl) {
+            try {
+                const appService = new AppService(this.env);
+                const deploymentId = await appService.getDeploymentId(this.getAgentId());
+                const customDomain = (this.env as { CUSTOM_DOMAIN?: string }).CUSTOM_DOMAIN;
+                if (deploymentId && customDomain) {
+                    const restoredUrl = `https://${deploymentId}.${customDomain}`;
+                    this.setState({
+                        ...this.state,
+                        productionDeploymentUrl: restoredUrl,
+                        productionDeploymentId: deploymentId,
+                    });
+                    this.logger().info('Backfilled productionDeploymentUrl from DB', {
+                        deploymentId,
+                        restoredUrl,
+                    });
+                }
+            } catch (err) {
+                this.logger().warn('Failed to backfill deployment URL from DB', err);
+            }
+        }
+
         sendToConnection(connection, WebSocketMessageResponses.AGENT_CONNECTED, {
             state: this.state,
             templateDetails: this.behavior.getTemplateDetails(),

@@ -211,6 +211,15 @@ export function createWebSocketMessageHandler(deps: HandleMessageDeps) {
                         setPreviewUrl(previewUrl);
                     }
 
+                    // Restore production deployment URL if the app has already been
+                    // deployed — otherwise the UI shows the "Ready to Deploy" prompt
+                    // every reload even though the app is live.
+                    const restoredDeploymentUrl = (state as { productionDeploymentUrl?: string }).productionDeploymentUrl;
+                    if (restoredDeploymentUrl) {
+                        setProductionDeploymentUrl(restoredDeploymentUrl);
+                        setIsRedeployReady(false);
+                    }
+
                     if (templateDetails) {
                         // Store template details for manifest parsing and validation
                         setTemplateDetails(templateDetails);

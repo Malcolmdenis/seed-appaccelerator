@@ -92,6 +92,14 @@ export class ProjectObjective<
 				this.logger.info('Updated deployment ID in database', {
 					deploymentId: result.deploymentId,
 				});
+
+				// Persist on agent state so reload doesn't show "Ready to Deploy"
+				// for an app that's already deployed.
+				this.setState({
+					...this.state,
+					productionDeploymentUrl: result.deploymentUrl,
+					productionDeploymentId: result.deploymentId,
+				});
 			}
 
 			return {
