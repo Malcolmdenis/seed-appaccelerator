@@ -159,17 +159,23 @@ const DEFAULT_AGENT_CONFIG: AgentConfig = {
         fallbackModel: AIModels.GEMINI_2_5_PRO,
     },
     deepDebugger: {
-        // Grok handles long agentic tool loops correctly; Gemini Flash Preview
-        // tends to no-op (call mark_debugging_complete immediately without any
-        // investigation/fix tools). Requires GROK_API_KEY in worker secrets.
-        name: AIModels.GROK_4_1_FAST,
+        // Claude 4.5 Sonnet is the strongest model for agentic tool loops in
+        // this codebase — it reliably investigates with read_files/run_analysis
+        // and applies fixes via regenerate_file rather than no-op'ing the way
+        // Gemini Flash Preview does. Requires ANTHROPIC_API_KEY in worker
+        // secrets. Falls back to Gemini 2.5 Pro on Anthropic outage.
+        name: AIModels.CLAUDE_4_5_SONNET,
         reasoning_effort: 'high',
         max_tokens: 8000,
         temperature: 1,
         fallbackModel: AIModels.GEMINI_2_5_PRO,
     },
     fileRegeneration: {
-        name: AIModels.GEMINI_3_FLASH_PREVIEW,
+        // Claude 4.5 Sonnet is materially better at surgical file rewrites
+        // than Gemini Flash Preview — fewer dropped imports, fewer off-by-one
+        // indent regressions on TS. Fall back to Gemini Flash if Anthropic
+        // returns an error (keeps the platform usable during outages).
+        name: AIModels.CLAUDE_4_5_SONNET,
         reasoning_effort: 'low',
         max_tokens: 32000,
         temperature: 1,
