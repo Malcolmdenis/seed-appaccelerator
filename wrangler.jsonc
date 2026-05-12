@@ -169,13 +169,7 @@
             },
             "version": "1.0.0"
         },
-        // Temporarily empty: skip the seed.ar custom-domain attachment so the deploy
-        // doesn't touch existing DNS records on the apex. The deploy script
-        // (scripts/deploy.ts) sees this empty value and switches into workers.dev
-        // mode — workers_dev: true, routes: removed. Platform accessible at
-        // https://seed-production-appacc.malcolmdenis46.workers.dev/. Restore to
-        // "seed.ar" when the apex is ready to point back at this worker.
-        "CUSTOM_DOMAIN": "",
+        "CUSTOM_DOMAIN": "seed.ar",
         "MAX_SANDBOX_INSTANCES": "10",
         "SANDBOX_INSTANCE_TYPE": "standard-3"
     },
