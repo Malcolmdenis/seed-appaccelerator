@@ -61,11 +61,26 @@ export function getAllowedOrigins(env: Env): string[] {
 }
 
 export function isOriginAllowed(env: Env, origin: string): boolean {
-    const allowedOrigins = getAllowedOrigins(env);
     if (!origin) return false;
-    
-    // Check against allowed origins
-    return allowedOrigins.includes(origin);
+
+    const allowedOrigins = getAllowedOrigins(env);
+    if (allowedOrigins.includes(origin)) return true;
+
+    // Always allow the platform's own workers.dev address. Worker subdomains
+    // under *.workers.dev are issued exclusively to the worker's owner — they
+    // can't be spoofed and they don't belong to user apps. This makes the
+    // workers.dev-only deployment mode (empty CUSTOM_DOMAIN) work without
+    // having to hard-code the exact subdomain in env vars.
+    try {
+        const parsed = new URL(origin);
+        if (parsed.protocol === 'https:' && parsed.hostname.endsWith('.workers.dev')) {
+            return true;
+        }
+    } catch {
+        // Malformed origin — fall through to deny.
+    }
+
+    return false;
 }
 
 /**
