@@ -1130,10 +1130,17 @@ class CloudflareDeploymentManager {
                 }
 			}
 
+			// Tell Cloudflare to overwrite any existing DNS records (A, CNAME, etc.)
+			// that point at customDomain. Without this, wrangler deploy fails with
+			// "Hostname '<domain>' already has externally managed DNS records.
+			//  Either delete them, try a different hostname, or use the option
+			//  'override_existing_dns_record' to override. [code: 100117]" — this
+			// happens any time the apex already has DNS records (manual A record,
+			// previous Pages project, etc.). Safe for first-party-owned domains.
 			expectedRoutes = [
-				{ pattern: customDomain, custom_domain: true },
+				{ pattern: customDomain, custom_domain: true, override_existing_dns_record: true },
 				wildcardRoute,
-			];
+			] as unknown as typeof expectedRoutes;
 
 			// Check if routes need updating
 			let needsUpdate = false;
@@ -1158,6 +1165,16 @@ class CloudflareDeploymentManager {
 					const actualZoneId = (actual && (actual as any).zone_id) ?? null;
 					const expectedZoneId = expected.zone_id ?? null;
 					if (actualZoneId !== expectedZoneId) {
+						needsUpdate = true;
+						break;
+					}
+
+					// Also force a rewrite if our expected override_existing_dns_record
+					// flag is missing on the actual route — otherwise wrangler deploy
+					// will keep hitting code 100117 on each redeploy.
+					const expectedOverride = (expected as { override_existing_dns_record?: boolean }).override_existing_dns_record === true;
+					const actualOverride = (actual && (actual as { override_existing_dns_record?: boolean }).override_existing_dns_record) === true;
+					if (expectedOverride && !actualOverride) {
 						needsUpdate = true;
 						break;
 					}
