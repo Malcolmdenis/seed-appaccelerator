@@ -143,12 +143,12 @@ const worker = {
         // logger.info(`Received request: ${request.method} ${request.url}`);
 		// --- Pre-flight Checks ---
 
-		// 1. Critical configuration check: Ensure custom domain is set.
-        const previewDomain = getPreviewDomain(env);
-		if (!previewDomain || previewDomain.trim() === '') {
-			logger.error('FATAL: env.CUSTOM_DOMAIN is not configured in wrangler.toml or the Cloudflare dashboard.');
-			return new Response('Server configuration error: Application domain is not set.', { status: 500 });
-		}
+		// 1. Configuration: previewDomain is used for *user-app* subdomain matching
+		//    (e.g. <app>.seed.ar). When CUSTOM_DOMAIN is intentionally empty
+		//    — workers.dev-only mode — there are no user-app subdomains to
+		//    route, so an empty previewDomain is allowed; we just won't match
+		//    any subdomain requests.
+		const previewDomain = (getPreviewDomain(env) || '').trim();
 
 		const url = new URL(request.url);
 		const { hostname, pathname } = url;
@@ -162,10 +162,18 @@ const worker = {
 		// --- Domain-based Routing ---
 
 		// Normalize hostnames for both local development (localhost) and production.
+		// In addition to the configured custom domain we always accept the
+		// workers.dev address — that's the platform's own subdomain (issued by
+		// Cloudflare to the worker), so it must always serve the main platform
+		// and never be misidentified as a user-app subdomain.
+		const customDomain = (env.CUSTOM_DOMAIN || '').trim();
+		const isWorkersDevHost = hostname.endsWith('.workers.dev');
 		const isMainDomainRequest =
-			hostname === env.CUSTOM_DOMAIN || hostname === 'localhost';
+			(customDomain !== '' && hostname === customDomain) ||
+			hostname === 'localhost' ||
+			isWorkersDevHost;
 		const isSubdomainRequest =
-			hostname.endsWith(`.${previewDomain}`) ||
+			(previewDomain !== '' && hostname.endsWith(`.${previewDomain}`)) ||
 			(hostname.endsWith('.localhost') && hostname !== 'localhost');
 
 		// Route 1: Main Platform Request (e.g., build.cloudflare.dev or localhost)

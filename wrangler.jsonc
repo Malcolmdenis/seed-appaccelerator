@@ -141,11 +141,7 @@
 	"routes": [
         {
             "pattern": "seed.ar",
-            "custom_domain": true,
-            // Allow wrangler to overwrite existing manual DNS records on seed.ar
-            // when attaching the custom domain. Without this, deploys fail with
-            // "code: 100117" if an A/CNAME already exists on the apex.
-            "override_existing_dns_record": true
+            "custom_domain": true
         },
         {
             "pattern": "*preview.seed.ar/*",
@@ -173,7 +169,13 @@
             },
             "version": "1.0.0"
         },
-        "CUSTOM_DOMAIN": "seed.ar",
+        // Temporarily empty: skip the seed.ar custom-domain attachment so the deploy
+        // doesn't touch existing DNS records on the apex. The deploy script
+        // (scripts/deploy.ts) sees this empty value and switches into workers.dev
+        // mode — workers_dev: true, routes: removed. Platform accessible at
+        // https://seed-production-appacc.malcolmdenis46.workers.dev/. Restore to
+        // "seed.ar" when the apex is ready to point back at this worker.
+        "CUSTOM_DOMAIN": "",
         "MAX_SANDBOX_INSTANCES": "10",
         "SANDBOX_INSTANCE_TYPE": "standard-3"
     },
